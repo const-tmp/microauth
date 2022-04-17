@@ -37,7 +37,7 @@ func main() {
 
 	userDB := dbuser.NewService(db, cfg)
 	userWeb := user.NewService(userDB)
-	authMiddleware, err := auth.AuthMiddleware(userDB)
+	authMiddleware, err := auth.Middleware(userDB)
 	if err != nil {
 		log.Fatal("creating auth middleware failed")
 	}
@@ -49,13 +49,13 @@ func main() {
 		public.POST("/register", userWeb.Register)
 	}
 
-	//private := router.Group("/v2")
+	private := router.Group("/")
 	//{
 	//	private.POST("/login", loginEndpoint)
 	//	private.POST("/submit", submitEndpoint)
 	//	private.POST("/read", readEndpoint)
 	//}
-	//private.Use(authMiddleware.MiddlewareFunc())
+	private.Use(authMiddleware.MiddlewareFunc())
 
 	router.NoRoute(authMiddleware.MiddlewareFunc(), func(c *gin.Context) {
 		claims := jwt.ExtractClaims(c)

@@ -8,6 +8,7 @@ import (
 	"github.com/h1ght1me/auth-micro/pkg/utils"
 	"github.com/h1ght1me/auth-micro/web"
 	"github.com/h1ght1me/auth-micro/web/auth"
+	"log"
 	"net/http"
 
 	dbuser "github.com/h1ght1me/auth-micro/pkg/database/user"
@@ -19,34 +20,35 @@ type Service struct {
 }
 
 func NewService(userService *dbuser.Service) *Service {
-	return &Service{
-		Service: userService,
-		Config:  userService.Config,
-	}
+	return &Service{Service: userService, Config: userService.Config}
 }
 
 func (t *Service) GetUsers(c *gin.Context) {
 	users, err := t.Service.Users()
 	if err != nil {
-		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": "internal server error"})
+		log.Println(err)
+		c.JSON(http.StatusInternalServerError, web.APIResponse{OK: false, Errors: "internal server error"})
 		return
 	}
-	c.IndentedJSON(http.StatusOK, users)
+	c.JSON(http.StatusOK, users)
 }
 
 func (t *Service) GetUser(c *gin.Context) {
 	id := c.Param("userid")
 	userID, err := uuid.FromString(id)
 	if err != nil {
-		c.IndentedJSON(http.StatusBadRequest, gin.H{"message": "userid must be an integer"})
+		c.JSON(http.StatusBadRequest, web.APIResponse{OK: false, Errors: "userid must be an integer"})
 		return
 	}
 	user, err := t.Service.User(userID)
 	if err != nil {
-		c.IndentedJSON(http.StatusNotFound, gin.H{"message": fmt.Sprintf("user with id %d not found", userID)})
+		c.JSON(
+			http.StatusNotFound,
+			web.APIResponse{OK: false, Errors: fmt.Sprintf("user with id %d not found", userID)},
+		)
 		return
 	}
-	c.IndentedJSON(http.StatusOK, user)
+	c.JSON(http.StatusOK, user)
 }
 
 func (t *Service) Register(c *gin.Context) {
@@ -74,7 +76,7 @@ func (t *Service) Register(c *gin.Context) {
 			Errors: err,
 		})
 	}
-	c.IndentedJSON(http.StatusCreated, web.APIResponse{
+	c.JSON(http.StatusCreated, web.APIResponse{
 		OK:     true,
 		Result: u,
 		Errors: nil,
@@ -88,9 +90,9 @@ func (t *Service) Register(c *gin.Context) {
 //		return
 //	}
 //	if err := t.Service.CreateUser(request.User.httpToModel()); err != nil {
-//		c.IndentedJSON(http.StatusInternalServerError, gin.H{"message": "internal server error"})
+//		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal server error"})
 //	} else {
-//		c.IndentedJSON(http.StatusCreated, request.User)
+//		c.JSON(http.StatusCreated, request.User)
 //	}
 //}
 
@@ -99,13 +101,13 @@ func (t *Service) DeleteUser(c *gin.Context) {
 
 	userID, err := uuid.FromString(id)
 	if err != nil {
-		c.IndentedJSON(http.StatusBadRequest, gin.H{"message": "userid must be an integer"})
+		c.JSON(http.StatusBadRequest, gin.H{"message": "userid must be an integer"})
 		return
 	}
 
 	_, err = t.Service.User(userID)
 	if err != nil {
-		c.IndentedJSON(
+		c.JSON(
 			http.StatusNotFound,
 			gin.H{
 				"message": fmt.Sprintf("user with id %d not found", userID),
@@ -114,13 +116,13 @@ func (t *Service) DeleteUser(c *gin.Context) {
 		return
 	}
 	if err = t.Service.DeleteUser(userID); err != nil {
-		c.IndentedJSON(
+		c.JSON(
 			http.StatusNotFound,
 			gin.H{
 				"message": fmt.Sprintf("user with id %d not found", userID),
 			},
 		)
 	} else {
-		c.IndentedJSON(http.StatusOK, struct{}{})
+		c.JSON(http.StatusOK, struct{}{})
 	}
 }

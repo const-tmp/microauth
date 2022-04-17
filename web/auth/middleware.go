@@ -15,7 +15,7 @@ import (
 	"github.com/h1ght1me/auth-micro/web"
 )
 
-func AuthMiddleware(userDB *dbuser.Service) (*jwt.GinJWTMiddleware, error) {
+func Middleware(userDB *dbuser.Service) (*jwt.GinJWTMiddleware, error) {
 	authMiddleware, err := jwt.New(&jwt.GinJWTMiddleware{
 		Realm:       "jwt auth",
 		Key:         []byte(userDB.Config.Server.SecretKey),
@@ -24,20 +24,28 @@ func AuthMiddleware(userDB *dbuser.Service) (*jwt.GinJWTMiddleware, error) {
 		IdentityKey: identityKey,
 		PayloadFunc: func(data interface{}) jwt.MapClaims {
 			if v, ok := data.(*JWTData); ok {
-				return jwt.MapClaims{
-					identityKey: v.ID,
-					"name":      v.Name,
-					"access":    v.Access,
-				}
+				return jwt.MapClaims{identityKey: v.ID, "name": v.Name, "access": v.Access}
 			}
 			return jwt.MapClaims{}
 		},
 		IdentityHandler: func(c *gin.Context) interface{} {
 			claims := jwt.ExtractClaims(c)
+			id, ok := claims[identityKey].(string)
+			if !ok {
+				log.Panicln("can't extract userID from jwt claims")
+			}
+			userID, err := uuid.FromString(id)
+			if err != nil {
+				log.Panicf("can't extract userID from jwt claims: %s", err)
+			}
+			access, ok := claims["access"].(float64)
+			if !ok {
+				log.Panicln("can't extract access from jwt claims")
+			}
 			return &JWTData{
-				ID:     claims[identityKey].(uuid.UUID),
+				ID:     userID,
 				Name:   claims["name"].(string),
-				Access: claims["access"].(permissions.Permission),
+				Access: permissions.Permission(access),
 			}
 		},
 		Authenticator: func(c *gin.Context) (interface{}, error) {
@@ -58,23 +66,17 @@ func AuthMiddleware(userDB *dbuser.Service) (*jwt.GinJWTMiddleware, error) {
 			return nil, jwt.ErrFailedAuthentication
 		},
 		LoginResponse: func(c *gin.Context, code int, message string, time time.Time) {
-			c.IndentedJSON(code, web.APIResponse{
-				OK:     true,
-				Result: LoginResponse{Token: message},
-				Errors: nil,
-			})
+			c.JSON(code, web.APIResponse{OK: true, Result: LoginResponse{Token: message}})
 		},
 		Authorizator: func(data interface{}, c *gin.Context) bool {
+			log.Printf("path = %s\n", c.Request.URL.Path)
 			if v, ok := data.(*JWTData); ok && v.Access&permissions.Access > 0 {
 				return true
 			}
 			return false
 		},
 		Unauthorized: func(c *gin.Context, code int, message string) {
-			c.JSON(code, gin.H{
-				"code":    code,
-				"message": message,
-			})
+			c.JSON(code, web.APIResponse{Errors: message})
 		},
 		// TokenLookup is a string in the form of "<source>:<name>" that is used
 		// to extract token from the request.
