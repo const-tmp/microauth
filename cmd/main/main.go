@@ -4,17 +4,19 @@ import (
 	"fmt"
 	jwt "github.com/appleboy/gin-jwt/v2"
 	"github.com/gin-gonic/gin"
-	"github.com/h1ght1me/auth-micro/config"
-	"github.com/h1ght1me/auth-micro/pkg/auth"
-	"github.com/h1ght1me/auth-micro/pkg/database"
-	dbuser "github.com/h1ght1me/auth-micro/pkg/database/user"
-	"github.com/h1ght1me/auth-micro/web"
-	"github.com/h1ght1me/auth-micro/web/user"
 	"log"
 	"net/http"
 	"os"
+
+	"github.com/h1ght1me/auth-micro/config"
+	"github.com/h1ght1me/auth-micro/pkg/database"
+	dbuser "github.com/h1ght1me/auth-micro/pkg/database/user"
+	"github.com/h1ght1me/auth-micro/web"
+	"github.com/h1ght1me/auth-micro/web/auth"
+	"github.com/h1ght1me/auth-micro/web/user"
 )
 
+// main entry point
 func main() {
 	env, exists := os.LookupEnv("ENV")
 	if !exists {
@@ -33,11 +35,12 @@ func main() {
 		log.Fatal("migration failed")
 	}
 
-	userDB := dbuser.Service{DB: db}
-	userWeb := user.Service{
-		Service: userDB,
+	userDB := dbuser.NewService(db, cfg)
+	userWeb := user.NewService(userDB)
+	authMiddleware, err := auth.AuthMiddleware(userDB)
+	if err != nil {
+		log.Fatal("creating auth middleware failed")
 	}
-	authMiddleware, err := auth.AuthMiddleware(&userDB)
 	router := gin.Default()
 
 	public := router.Group("/")
@@ -61,7 +64,6 @@ func main() {
 			http.StatusNotFound,
 			web.APIResponse{
 				OK:     false,
-				Result: nil,
 				Errors: "resource not found",
 			},
 		)

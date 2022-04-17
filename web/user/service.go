@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
+	"github.com/h1ght1me/auth-micro/config"
 	"github.com/h1ght1me/auth-micro/pkg/utils"
 	"github.com/h1ght1me/auth-micro/web"
 	"github.com/h1ght1me/auth-micro/web/auth"
@@ -13,7 +14,15 @@ import (
 )
 
 type Service struct {
-	Service dbuser.Service
+	Service *dbuser.Service
+	Config  *config.Config
+}
+
+func NewService(userService *dbuser.Service) *Service {
+	return &Service{
+		Service: userService,
+		Config:  userService.Config,
+	}
 }
 
 func (t *Service) GetUsers(c *gin.Context) {

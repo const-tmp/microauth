@@ -1,5 +1,6 @@
 server:
   port: 8080
+  secretkey: xxx
 
 database:
   host: localhost

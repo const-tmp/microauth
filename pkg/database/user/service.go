@@ -2,11 +2,20 @@ package user
 
 import (
 	"github.com/gofrs/uuid"
+	"github.com/h1ght1me/auth-micro/config"
 	"gorm.io/gorm"
 )
 
 type Service struct {
-	DB *gorm.DB
+	DB     *gorm.DB
+	Config *config.Config
+}
+
+func NewService(db *gorm.DB, cfg *config.Config) *Service {
+	return &Service{
+		DB:     db,
+		Config: cfg,
+	}
 }
 
 func (s *Service) User(id uuid.UUID) (*User, error) {

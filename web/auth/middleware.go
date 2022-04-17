@@ -13,17 +13,15 @@ import (
 	"github.com/h1ght1me/auth-micro/pkg/permissions"
 	"github.com/h1ght1me/auth-micro/pkg/utils"
 	"github.com/h1ght1me/auth-micro/web"
-	"github.com/h1ght1me/auth-micro/web/auth"
 )
 
 func AuthMiddleware(userDB *dbuser.Service) (*jwt.GinJWTMiddleware, error) {
 	authMiddleware, err := jwt.New(&jwt.GinJWTMiddleware{
-		Realm:       "test zone",
-		Key:         []byte("secret key"),
+		Realm:       "jwt auth",
+		Key:         []byte(userDB.Config.Server.SecretKey),
 		Timeout:     time.Hour,
 		MaxRefresh:  time.Hour,
 		IdentityKey: identityKey,
-
 		PayloadFunc: func(data interface{}) jwt.MapClaims {
 			if v, ok := data.(*JWTData); ok {
 				return jwt.MapClaims{
@@ -43,21 +41,18 @@ func AuthMiddleware(userDB *dbuser.Service) (*jwt.GinJWTMiddleware, error) {
 			}
 		},
 		Authenticator: func(c *gin.Context) (interface{}, error) {
-			var loginVals auth.Auth
-			if err := c.ShouldBind(&loginVals); err != nil {
+			var authData Auth
+			if err := c.ShouldBind(&authData); err != nil {
 				return "", jwt.ErrMissingLoginValues
 			}
-			log.Println(loginVals)
-			//userID := loginVals.Name
-			//password := loginVals.Password
-			user, err := userDB.GetByName(loginVals.Name)
+			user, err := userDB.GetByName(authData.Name)
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					return nil, jwt.ErrFailedAuthentication
 				}
 				return nil, err
 			}
-			if utils.CheckPasswordHash(loginVals.Password, user.Password) {
+			if utils.CheckPasswordHash(authData.Password, user.Password) {
 				return &JWTData{ID: user.ID, Name: user.Name, Access: user.Access}, nil
 			}
 			return nil, jwt.ErrFailedAuthentication
@@ -65,17 +60,16 @@ func AuthMiddleware(userDB *dbuser.Service) (*jwt.GinJWTMiddleware, error) {
 		LoginResponse: func(c *gin.Context, code int, message string, time time.Time) {
 			c.IndentedJSON(code, web.APIResponse{
 				OK:     true,
-				Result: auth.LoginResponse{Token: message},
+				Result: LoginResponse{Token: message},
 				Errors: nil,
 			})
 		},
-		//Authorizator: func(data interface{}, c *gin.Context) bool {
-		//	if v, ok := data.(*User); ok && v.UserName == "admin" {
-		//		return true
-		//	}
-		//
-		//	return false
-		//},
+		Authorizator: func(data interface{}, c *gin.Context) bool {
+			if v, ok := data.(*JWTData); ok && v.Access&permissions.Access > 0 {
+				return true
+			}
+			return false
+		},
 		Unauthorized: func(c *gin.Context, code int, message string) {
 			c.JSON(code, gin.H{
 				"code":    code,
@@ -100,7 +94,6 @@ func AuthMiddleware(userDB *dbuser.Service) (*jwt.GinJWTMiddleware, error) {
 		// TimeFunc provides the current time. You can override it to use another time value. This is useful for testing or if your server uses a different time zone than your tokens.
 		TimeFunc: time.Now,
 	})
-
 	if err != nil {
 		log.Fatal("JWT Error:" + err.Error())
 	}

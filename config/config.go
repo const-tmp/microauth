@@ -14,7 +14,8 @@ type Config struct {
 }
 
 type ServerConf struct {
-	Port int
+	Port      int
+	SecretKey string
 }
 
 type DatabaseConf struct {
