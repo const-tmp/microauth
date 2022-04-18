@@ -37,7 +37,7 @@ func main() {
 
 	userDB := dbuser.NewService(db, cfg)
 	userWeb := user.NewService(userDB)
-	authMiddleware, err := auth.Middleware(userDB)
+	authMiddleware, err := auth.Middleware(userWeb)
 	if err != nil {
 		log.Fatal("creating auth middleware failed")
 	}

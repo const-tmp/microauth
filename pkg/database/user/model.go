@@ -11,13 +11,13 @@ type User struct {
 	ID        uuid.UUID `gorm:"primary_key;type:uuid"`
 	Name      string    `gorm:"size:32"`
 	Password  []byte    `gorm:"size:60"`
-	Access    permissions.Permission
+	Access    permissions.Permissions
 	CreatedAt time.Time      `gorm:"autoCreateTime"`
 	UpdatedAt time.Time      `gorm:"autoCreateTime"`
 	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
-func (u *User) BeforeCreate(tx *gorm.DB) (err error) {
+func (u *User) BeforeCreate(_ *gorm.DB) (err error) {
 	u.ID, err = uuid.NewV4()
 	return
 }

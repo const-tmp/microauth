@@ -1,17 +1,19 @@
 package user
 
 import (
+	"errors"
 	"fmt"
+	jwt "github.com/appleboy/gin-jwt/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
-	"github.com/h1ght1me/auth-micro/config"
-	"github.com/h1ght1me/auth-micro/pkg/utils"
-	"github.com/h1ght1me/auth-micro/web"
-	"github.com/h1ght1me/auth-micro/web/auth"
+	"gorm.io/gorm"
 	"log"
 	"net/http"
 
+	"github.com/h1ght1me/auth-micro/config"
 	dbuser "github.com/h1ght1me/auth-micro/pkg/database/user"
+	"github.com/h1ght1me/auth-micro/pkg/utils"
+	"github.com/h1ght1me/auth-micro/web"
 )
 
 type Service struct {
@@ -23,36 +25,54 @@ func NewService(userService *dbuser.Service) *Service {
 	return &Service{Service: userService, Config: userService.Config}
 }
 
-func (t *Service) GetUsers(c *gin.Context) {
-	users, err := t.Service.Users()
+func (s *Service) Authenticator(c *gin.Context) (interface{}, error) {
+	var authData web.Auth
+	if err := c.ShouldBind(&authData); err != nil {
+		return "", jwt.ErrMissingLoginValues
+	}
+	user, err := s.Service.GetByName(authData.Name)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, jwt.ErrFailedAuthentication
+		}
+		return nil, err
+	}
+	if utils.CheckPasswordHash(authData.Password, user.Password) {
+		return &web.JWTData{ID: user.ID, Name: user.Name, Access: user.Access}, nil
+	}
+	return nil, jwt.ErrFailedAuthentication
+}
+
+func (s *Service) GetUsers(c *gin.Context) {
+	users, err := s.Service.Users()
 	if err != nil {
 		log.Println(err)
-		c.JSON(http.StatusInternalServerError, web.APIResponse{OK: false, Errors: "internal server error"})
+		c.JSON(http.StatusInternalServerError, web.APIResponse{Errors: "internal server error"})
 		return
 	}
 	c.JSON(http.StatusOK, users)
 }
 
-func (t *Service) GetUser(c *gin.Context) {
+func (s *Service) GetUser(c *gin.Context) {
 	id := c.Param("userid")
 	userID, err := uuid.FromString(id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, web.APIResponse{OK: false, Errors: "userid must be an integer"})
+		c.JSON(http.StatusBadRequest, web.APIResponse{Errors: "userid must be an integer"})
 		return
 	}
-	user, err := t.Service.User(userID)
+	user, err := s.Service.User(userID)
 	if err != nil {
 		c.JSON(
 			http.StatusNotFound,
-			web.APIResponse{OK: false, Errors: fmt.Sprintf("user with id %d not found", userID)},
+			web.APIResponse{Errors: fmt.Sprintf("user with id %d not found", userID)},
 		)
 		return
 	}
 	c.JSON(http.StatusOK, user)
 }
 
-func (t *Service) Register(c *gin.Context) {
-	authData := new(auth.Auth)
+func (s *Service) Register(c *gin.Context) {
+	authData := new(web.Auth)
 	err := c.BindJSON(authData)
 	if err != nil {
 		fmt.Println(err)
@@ -62,67 +82,39 @@ func (t *Service) Register(c *gin.Context) {
 	u.Name = authData.Name
 	u.Password, err = utils.HashPassword(authData.Password)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, web.APIResponse{
-			OK:     false,
-			Result: nil,
-			Errors: err,
-		})
+		c.JSON(http.StatusBadRequest, web.APIResponse{Errors: err})
 	}
-	err = t.Service.CreateUser(u)
+	err = s.Service.CreateUser(u)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, web.APIResponse{
-			OK:     false,
-			Result: nil,
-			Errors: err,
-		})
+		c.JSON(http.StatusBadRequest, web.APIResponse{Errors: err})
 	}
-	c.JSON(http.StatusCreated, web.APIResponse{
-		OK:     true,
-		Result: u,
-		Errors: nil,
-	})
+	c.JSON(http.StatusCreated, web.APIResponse{OK: true, Result: u})
 }
 
-//func (t *Service) CreateUser(c *gin.Context) {
-//	var request CreateUserRequest
-//	if err := c.ShouldBindJSON(&request); err != nil {
-//		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-//		return
-//	}
-//	if err := t.Service.CreateUser(request.User.httpToModel()); err != nil {
-//		c.JSON(http.StatusInternalServerError, gin.H{"message": "internal server error"})
-//	} else {
-//		c.JSON(http.StatusCreated, request.User)
-//	}
-//}
-
-func (t *Service) DeleteUser(c *gin.Context) {
+func (s *Service) DeleteUser(c *gin.Context) {
 	id := c.Param("userid")
 
 	userID, err := uuid.FromString(id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"message": "userid must be an integer"})
+		c.JSON(http.StatusBadRequest, web.APIResponse{Errors: "userid must be an integer"})
 		return
 	}
 
-	_, err = t.Service.User(userID)
+	_, err = s.Service.User(userID)
 	if err != nil {
 		c.JSON(
 			http.StatusNotFound,
-			gin.H{
-				"message": fmt.Sprintf("user with id %d not found", userID),
-			},
+			web.APIResponse{Errors: fmt.Sprintf("user with id %d not found", userID)},
 		)
 		return
 	}
-	if err = t.Service.DeleteUser(userID); err != nil {
+	if err = s.Service.DeleteUser(userID); err != nil {
+		log.Println(err)
 		c.JSON(
-			http.StatusNotFound,
-			gin.H{
-				"message": fmt.Sprintf("user with id %d not found", userID),
-			},
+			http.StatusBadRequest,
+			web.APIResponse{Errors: fmt.Sprintf("user with id %d not found", userID)},
 		)
 	} else {
-		c.JSON(http.StatusOK, struct{}{})
+		c.JSON(http.StatusOK, web.APIResponse{OK: true})
 	}
 }
